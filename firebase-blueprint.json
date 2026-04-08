@@ -1,0 +1,148 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the Roktobondhu application, either a donor or receiver.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The Firebase Auth UID of the user."
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the user."
+        },
+        "bloodGroup": {
+          "type": "string",
+          "description": "Blood group of the user (e.g., A+, B-, O+)."
+        },
+        "location": {
+          "type": "object",
+          "description": "Location details.",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "text": { "type": "string" }
+          }
+        },
+        "isDonor": {
+          "type": "boolean",
+          "description": "Whether the user is registered as a donor."
+        },
+        "availability": {
+          "type": "boolean",
+          "description": "Whether the donor is currently available to donate."
+        },
+        "lastDonationDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO string of the last donation date."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO string of when the user profile was created."
+        }
+      },
+      "required": ["uid", "name", "bloodGroup", "createdAt"]
+    },
+    "EmergencyRequest": {
+      "title": "Emergency Request",
+      "description": "A request for blood donation.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who created the request."
+        },
+        "bloodGroup": {
+          "type": "string",
+          "description": "The required blood group."
+        },
+        "hospital": {
+          "type": "string",
+          "description": "The name of the hospital."
+        },
+        "location": {
+          "type": "string",
+          "description": "The location of the hospital."
+        },
+        "urgent": {
+          "type": "boolean",
+          "description": "Whether the request is urgent."
+        },
+        "message": {
+          "type": "string",
+          "description": "Additional message for the request."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO string of when the request was created."
+        }
+      },
+      "required": ["userId", "bloodGroup", "hospital", "location", "urgent", "createdAt"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "A chat session between two users.",
+      "type": "object",
+      "properties": {
+        "participants": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Array of UIDs of the participants."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["participants", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message within a chat.",
+      "type": "object",
+      "properties": {
+        "senderId": {
+          "type": "string",
+          "description": "UID of the sender."
+        },
+        "text": {
+          "type": "string",
+          "description": "The message text."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO string of when the message was sent."
+        }
+      },
+      "required": ["senderId", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "/requests/{requestId}": {
+      "schema": { "$ref": "#/entities/EmergencyRequest" },
+      "description": "Stores emergency blood requests."
+    },
+    "/chats/{chatId}": {
+      "schema": { "$ref": "#/entities/Chat" },
+      "description": "Stores chat sessions."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Stores messages within a chat session."
+    }
+  }
+}

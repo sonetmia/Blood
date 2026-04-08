@@ -1,0 +1,7 @@
+{
+  "name": "Roktobondhu",
+  "description": "A modern, mobile-first, privacy-focused blood donation platform optimized for fast emergency usage.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

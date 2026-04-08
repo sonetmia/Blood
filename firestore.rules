@@ -1,0 +1,169 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - name: string (required)
+    //   - bloodGroup: string (required)
+    //   - location: map (optional)
+    //   - isDonor: boolean (optional)
+    //   - availability: boolean (optional)
+    //   - lastDonationDate: string (optional)
+    //   - createdAt: string (required, immutable)
+    //
+    // Collection: requests
+    // Document ID: {requestId}
+    // Fields:
+    //   - userId: string (required, immutable)
+    //   - bloodGroup: string (required)
+    //   - hospital: string (required)
+    //   - location: string (required)
+    //   - urgent: boolean (required)
+    //   - message: string (optional)
+    //   - createdAt: string (required, immutable)
+    //
+    // Collection: chats
+    // Document ID: {chatId}
+    // Fields:
+    //   - participants: list of strings (required)
+    //   - createdAt: string (required, immutable)
+    //   - updatedAt: string (required)
+    //
+    // Subcollection: chats/{chatId}/messages
+    // Document ID: {messageId}
+    // Fields:
+    //   - senderId: string (required, immutable)
+    //   - text: string (required)
+    //   - timestamp: string (required, immutable)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isParticipant(chatId) {
+      return isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+        dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'bloodGroup', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.bloodGroup is string && data.bloodGroup in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] &&
+             isValidDateString(data.createdAt) &&
+             (!('location' in data) || (data.location is map && 'text' in data.location && (!('lat' in data.location) || data.location.lat is number) && (!('lng' in data.location) || data.location.lng is number))) &&
+             (!('isDonor' in data) || data.isDonor is bool) &&
+             (!('availability' in data) || data.availability is bool) &&
+             (!('lastDonationDate' in data) || data.lastDonationDate == null || isValidDateString(data.lastDonationDate));
+    }
+
+    function isValidRequest(data) {
+      return data.keys().hasAll(['userId', 'bloodGroup', 'hospital', 'location', 'urgent', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.bloodGroup is string && data.bloodGroup in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] &&
+             data.hospital is string && data.hospital.size() > 0 && data.hospital.size() < 200 &&
+             data.location is string && data.location.size() > 0 && data.location.size() < 200 &&
+             data.urgent is bool &&
+             isValidDateString(data.createdAt) &&
+             (!('message' in data) || (data.message is string && data.message.size() <= 1000));
+    }
+
+    function isValidChat(data) {
+      return data.keys().hasAll(['participants', 'createdAt', 'updatedAt']) &&
+             data.participants is list && data.participants.size() == 2 &&
+             request.auth.uid in data.participants &&
+             isValidDateString(data.createdAt) &&
+             isValidDateString(data.updatedAt);
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['senderId', 'text', 'timestamp']) &&
+             data.senderId == request.auth.uid &&
+             data.text is string && data.text.size() > 0 && data.text.size() <= 2000 &&
+             isValidDateString(data.timestamp);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Allow read for everyone authenticated (needed for searching donors)
+      // Note: In a stricter privacy setting, we might limit what fields are returned,
+      // but Firestore rules apply to the whole document. We'll rely on the client
+      // to format the name (e.g., S*** M***) and not show exact location.
+      allow read: if isAuthenticated();
+      
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      
+      allow update: if isOwner(userId) && 
+                    isValidUser(request.resource.data) &&
+                    request.resource.data.uid == resource.data.uid &&
+                    request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    match /requests/{requestId} {
+      // Anyone authenticated can read emergency requests
+      allow read: if isAuthenticated();
+      
+      allow create: if isAuthenticated() && isValidRequest(request.resource.data);
+      
+      allow update: if isAuthenticated() && 
+                    resource.data.userId == request.auth.uid &&
+                    isValidRequest(request.resource.data) &&
+                    request.resource.data.userId == resource.data.userId &&
+                    request.resource.data.createdAt == resource.data.createdAt;
+                    
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /chats/{chatId} {
+      // Only participants can read the chat
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      
+      allow create: if isAuthenticated() && isValidChat(request.resource.data);
+      
+      allow update: if isAuthenticated() && 
+                    request.auth.uid in resource.data.participants &&
+                    isValidChat(request.resource.data) &&
+                    request.resource.data.participants == resource.data.participants &&
+                    request.resource.data.createdAt == resource.data.createdAt;
+                    
+      match /messages/{messageId} {
+        // Only participants can read messages
+        allow read: if isParticipant(chatId);
+        
+        allow create: if isParticipant(chatId) && isValidMessage(request.resource.data);
+        
+        // Messages are immutable
+        allow update, delete: if false;
+      }
+    }
+  }
+}
